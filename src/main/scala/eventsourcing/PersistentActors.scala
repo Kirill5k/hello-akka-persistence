@@ -11,6 +11,7 @@ object PersistentActors extends App {
 
   object Accountant {
     case class Invoice(recipient: String, date: LocalDateTime, amount: Int)
+    case class BulkInvoice(invoices: List[Invoice])
     case class InvoiceRecorded(id: Int, recipient: String, date: LocalDateTime, amount: Int)
   }
   class Accountant extends PersistentActor with ActorLogging {
@@ -22,11 +23,20 @@ object PersistentActors extends App {
     override def receiveCommand: Receive = {
       case Invoice(recipient, date, amount) =>
         log.info(s"received invoice for amount $amount")
-        persist(InvoiceRecorded(latestId, recipient, date, amount)) { event =>
-          log.info(s"persisted event ${event.id} for total amount ${totalAmount+amount}")
-          latestId += 1
-          totalAmount += amount
+        persist(InvoiceRecorded(latestId, recipient, date, amount))(invoicePersistenceHandler)
+      case BulkInvoice(invoices) =>
+        log.info(s"received bulk invoice with ${invoices.size} elements")
+        val invoiceIds = latestId until (latestId + invoices.size)
+        val events = invoices.zip(invoiceIds).map {case (invoice, id) =>
+            InvoiceRecorded(id, invoice.recipient, invoice.date, invoice.amount)
         }
+        persistAll(events)(invoicePersistenceHandler)
+    }
+
+    def invoicePersistenceHandler(event: InvoiceRecorded): Unit = {
+      log.info(s"persisted event ${event.id} for total amount ${totalAmount+event.amount}")
+      latestId += 1
+      totalAmount += event.amount
     }
 
     override def receiveRecover: Receive = {
@@ -35,11 +45,20 @@ object PersistentActors extends App {
         latestId = id
         totalAmount += amount
     }
+
+    override protected def onPersistFailure(cause: Throwable, event: Any, seqNr: Long): Unit = {
+      log.error(s"failed to persist $event: $cause")
+      super.onPersistFailure(cause, event, seqNr)
+    }
+
+    override protected def onPersistRejected(cause: Throwable, event: Any, seqNr: Long): Unit = {
+      log.error(s"persist of $event rejected: $cause")
+      super.onPersistRejected(cause, event, seqNr)
+    }
   }
 
   val accountant = system.actorOf(Props[Accountant], "simple-accountant")
 
-//  for (i <- 1 to 10) {
-//    accountant ! Invoice("blah company", LocalDateTime.now(), i * 1000)
-//  }
+  val invoices = (1 to 10).map(i => Invoice("blah company", LocalDateTime.now(), i * 1000)).toList
+  accountant ! BulkInvoice(invoices)
 }
