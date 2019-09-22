@@ -2,11 +2,10 @@ package stores
 
 import akka.actor.{ActorSystem, Props}
 import com.typesafe.config.ConfigFactory
-import SimplePersistentActor._
 
-object LocalStores extends App {
-  val system = ActorSystem("sys", ConfigFactory.load().getConfig("localStores"))
-
+object PostgreSQLStores extends App {
+  val system = ActorSystem("postgres-sys", ConfigFactory.load().getConfig("postgresqlStores"))
+  import SimplePersistentActor._
 
   val simplePersistentActor = system.actorOf(Props[SimplePersistentActor], "simple-persistent")
   for (i <- 1 to 10) simplePersistentActor ! s"message $i"
