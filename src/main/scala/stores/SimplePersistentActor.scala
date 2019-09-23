@@ -1,11 +1,16 @@
 package stores
 
+import java.time.LocalDateTime
+import java.util.UUID
+
 import akka.actor.ActorLogging
 import akka.persistence.{PersistentActor, RecoveryCompleted, SaveSnapshotFailure, SaveSnapshotSuccess, SnapshotOffer}
 
 object SimplePersistentActor {
   case object Print
   case object Snap
+  case class Message(content: String, date: LocalDateTime, status: String)
+  case class Record(id: UUID, content: String, date: LocalDateTime, status: String)
 }
 
 class SimplePersistentActor extends PersistentActor with ActorLogging {
@@ -18,6 +23,10 @@ class SimplePersistentActor extends PersistentActor with ActorLogging {
     case Snap => saveSnapshot(nMessages)
     case SaveSnapshotSuccess(metadata) => log.info(s"saving snapshot success ($metadata)")
     case SaveSnapshotFailure(metadata, cause) => log.warning(s"saving snapshot fail: ${cause} ($metadata)")
+    case Message(content, date, status) => persist(Record(UUID.randomUUID(), content, date, status)) { record =>
+      log.info(s"persisting $record")
+      nMessages += 1
+    }
     case message => persist(message) { _ =>
       log.info(s"persisting $message")
       nMessages += 1
